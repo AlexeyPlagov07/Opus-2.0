@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 
 export default function App() {
@@ -11,6 +11,52 @@ export default function App() {
   const [logs, setLogs] = useState<any[]>([]);
   const [selectedPieces, setSelectedPieces] = useState<any[]>([]);
   const { user, loading, signInWithGoogle, logOut } = useAuth();
+  const [songs, setSongs] = useState<any[]>([]);
+
+  useEffect(() => {
+    async function loadSongs() {
+      if (!user) return;
+
+      const idToken = await user.getIdToken();
+      const response = await fetch("/api/songs", {
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+        },
+      });
+
+      const data = await response.json();
+      setSongs(data.songs ?? []);
+    }
+
+    loadSongs();
+  }, [user]);
+
+  async function handleAddSong() {
+    if (!user) return;
+
+    const idToken = await user.getIdToken();
+
+    await fetch("/api/songs", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        idToken,
+        song: inputValueSong,
+        artist: inputValueArtist,
+      }),
+    });
+
+    const refreshResponse = await fetch("/api/songs", {
+      headers: {
+        Authorization: `Bearer ${idToken}`,
+      },
+    });
+
+    const refreshData = await refreshResponse.json();
+    setSongs(refreshData.songs ?? []);
+  }
 
   const handleAdd = (piece: any) => {
     setSelectedPieces((prev) => [...prev, piece]);
@@ -65,28 +111,34 @@ export default function App() {
         <div className="flex justify-center min-h-screen p-8 gap-8">
           <div className="flex flex-col items-center justify-center flex-1 max-w-2x1">
             <ul className="w-full flex flex-col items-center mt-4">
-              {pieces.map((piece, index) => {
-                const isExpanded = expandedIndex === index;
+              {songs.map((song) => {
+                const isExpanded = expandedIndex === song.id;
+
                 return (
                   <li
-                    key={index}
+                    key={song.id}
                     className="cursor-pointer flex-col mb-3 border border-gray-500 rounded-lg p-4 w-96"
-                    onClick={() => setExpandedIndex(isExpanded ? null : index)}
+                    onClick={() => setExpandedIndex(isExpanded ? null : song.id)}
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex flex-col">
-                        <span>{"Song Title: "}{piece.song}</span>
-                        <span>{"Artist: "}{piece.artist}</span>
+                        <span>Song Title: {song.song_title}</span>
+                        <span>Artist: {song.artist}</span>
                       </div>
+
                       <select className="text-white" onClick={(e) => e.stopPropagation()}>
                         <option value="notStarted">Not Started</option>
                         <option value="inProgress">In Progress</option>
                         <option value="finished">Finished</option>
                       </select>
                     </div>
+
                     {isExpanded && (
                       <div className="mt-2 pt-4 border-t border-gray-600 text-gray-300">
-                        <span><h1>Add practice log</h1></span>
+                        <span>
+                          <h1>Add practice log</h1>
+                        </span>
+
                         <span>
                           <input
                             name="practiceDuration"
@@ -101,12 +153,19 @@ export default function App() {
                               e.stopPropagation();
 
                               if (inputPracticeDuration.trim() === "") {
-                                alert("Please enter a pratice duration.");
+                                alert("Please enter a practice duration.");
                                 return;
                               }
-                              setLogs((prev) => [...prev, { song: piece.song, artist: piece.artist, duration: inputPracticeDuration }]);
-                              setInputPracticeDuration("");
 
+                              setLogs((prev) => [
+                                ...prev,
+                                {
+                                  song: song.song_title,
+                                  artist: song.artist,
+                                  duration: inputPracticeDuration,
+                                },
+                              ]);
+                              setInputPracticeDuration("");
                               setExpandedIndex(null);
                             }}
                             className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
@@ -114,11 +173,11 @@ export default function App() {
                             Enter Log
                           </button>
                         </span>
+
                         <span>
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              setPieces((prev) => prev.filter((_, i) => i !== index));
                               setExpandedIndex(null);
                             }}
                             className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
@@ -126,7 +185,6 @@ export default function App() {
                             Delete Piece
                           </button>
                         </span>
-
                       </div>
                     )}
                   </li>
@@ -151,8 +209,8 @@ export default function App() {
               />
             </div>
             <button
-              onClick={() => {
-                setPieces((prev) => [...prev, { song: inputValueSong, artist: inputValueArtist }]);
+              onClick={async () => {
+                await handleAddSong();
                 setInputValueSong("");
                 setInputValueArtist("");
               }}
