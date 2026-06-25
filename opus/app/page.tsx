@@ -13,22 +13,39 @@ export default function App() {
   const { user, loading, signInWithGoogle, logOut } = useAuth();
   const [songs, setSongs] = useState<any[]>([]);
 
+  async function refreshSongs(idToken: string) {
+    const response = await fetch("/api/songs", {
+      headers: {
+        Authorization: `Bearer ${idToken}`,
+      },
+    });
+
+    const data = await response.json();
+    setSongs(data.songs ?? []);
+  }
+
+  async function refreshLogs(idToken: string) {
+    const response = await fetch("/api/logs", {
+      headers: {
+        Authorization: `Bearer ${idToken}`,
+      },
+    });
+
+    const data = await response.json();
+    setLogs(data.logs ?? []);
+  }
+
   useEffect(() => {
-    async function loadSongs() {
+    async function loadData() {
       if (!user) return;
 
       const idToken = await user.getIdToken();
-      const response = await fetch("/api/songs", {
-        headers: {
-          Authorization: `Bearer ${idToken}`,
-        },
-      });
 
-      const data = await response.json();
-      setSongs(data.songs ?? []);
+      await refreshSongs(idToken);
+      await refreshLogs(idToken);
     }
 
-    loadSongs();
+    loadData();
   }, [user]);
 
   async function handleAddSong() {
@@ -48,14 +65,54 @@ export default function App() {
       }),
     });
 
-    const refreshResponse = await fetch("/api/songs", {
+    await refreshSongs(idToken);
+  }
+
+  async function handleAddLog(song: any) {
+    if (!user) return;
+
+    const idToken = await user.getIdToken();
+
+    const response = await fetch("/api/logs", {
+      method: "POST",
       headers: {
-        Authorization: `Bearer ${idToken}`,
+        "Content-Type": "application/json",
       },
+      body: JSON.stringify({
+        idToken,
+        songId: song.id,
+        durationMinutes: inputPracticeDuration,
+      }),
     });
 
-    const refreshData = await refreshResponse.json();
-    setSongs(refreshData.songs ?? []);
+    const data = await response.json();
+
+    if (!response.ok) {
+      alert(data.error ?? "Something went wrong");
+      return;
+    }
+
+    await refreshLogs(idToken);
+  }
+
+  async function handleDeleteSong(song: any) {
+    if (!user) return;
+
+    const idToken = await user.getIdToken();
+
+    await fetch("/api/songs", {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        idToken,
+        songId: song.id,
+      }),
+    });
+
+    await refreshSongs(idToken);
+    await refreshLogs(idToken);
   }
 
   const handleAdd = (piece: any) => {
@@ -149,7 +206,7 @@ export default function App() {
                             placeholder="Practice Duration (min)"
                           />
                           <button
-                            onClick={(e) => {
+                            onClick={async (e) => {
                               e.stopPropagation();
 
                               if (inputPracticeDuration.trim() === "") {
@@ -157,14 +214,7 @@ export default function App() {
                                 return;
                               }
 
-                              setLogs((prev) => [
-                                ...prev,
-                                {
-                                  song: song.song_title,
-                                  artist: song.artist,
-                                  duration: inputPracticeDuration,
-                                },
-                              ]);
+                              await handleAddLog(song);
                               setInputPracticeDuration("");
                               setExpandedIndex(null);
                             }}
@@ -179,6 +229,7 @@ export default function App() {
                             onClick={(e) => {
                               e.stopPropagation();
                               setExpandedIndex(null);
+                              handleDeleteSong(song);
                             }}
                             className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
                           >
@@ -226,9 +277,9 @@ export default function App() {
                 return (
                   <li key={index} className="cursor-pointer flex-col mb-3 border border-gray-500 rounded-lg p-4 w-80">
                     <div className="flex flex-col">
-                      <span>{"Song Title: "}{log.song}</span>
-                      <span>{"Artist: "}{log.artist}</span>
-                      <span>{"Duration: "}{log.duration}{" minutes"}</span>
+                      <span>Song Title: {log.song_title}</span>
+                      <span>Artist: {log.artist}</span>
+                      <span>Duration: {log.duration_minutes}{" minutes"}</span>
                     </div>
                   </li>
                 );

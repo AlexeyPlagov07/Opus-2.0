@@ -33,8 +33,16 @@ export async function POST(req: Request) {
     `;
 
         return NextResponse.json({ ok: true });
-    } catch (error) {
+    } catch (error: any) {
         console.error(error);
+
+        if (error?.code === "22P02") {
+            return NextResponse.json(
+                { error: "Practice duration must be a whole number." },
+                { status: 400 }
+            );
+        }
+
         return NextResponse.json(
             { error: "Unauthorized or invalid request" },
             { status: 401 }
@@ -64,5 +72,35 @@ export async function GET(req: Request) {
         return NextResponse.json({ songs });
     } catch {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+}
+
+export async function DELETE(req: Request) {
+    try {
+        const { idToken, songId } = await req.json();
+
+        if (!idToken || !songId) {
+            return NextResponse.json(
+                { error: "Missing required field" },
+                { status: 400 }
+            );
+        }
+
+        const decoded = await auth.verifyIdToken(idToken);
+        const userId = decoded.uid;
+
+        await sql`
+            delete from songs
+            where id = ${songId}
+            and user_id = ${userId}
+        `;
+
+        return NextResponse.json({ ok: true });
+    } catch (error) {
+        console.error(error);
+        return NextResponse.json(
+            { error: "UnAuthorizaed or invalid request" },
+            { status: 401 }
+        );
     }
 }
