@@ -5,9 +5,7 @@ import { sql } from "@/lib/neon";
 
 if (!getApps().length) {
     initializeApp({
-        credential: cert(
-            JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY as string)
-        ),
+        credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY as string)),
     });
 }
 
@@ -33,16 +31,8 @@ export async function POST(req: Request) {
     `;
 
         return NextResponse.json({ ok: true });
-    } catch (error: any) {
+    } catch (error) {
         console.error(error);
-
-        if (error?.code === "22P02") {
-            return NextResponse.json(
-                { error: "Practice duration must be a whole number." },
-                { status: 400 }
-            );
-        }
-
         return NextResponse.json(
             { error: "Unauthorized or invalid request" },
             { status: 401 }
@@ -75,6 +65,37 @@ export async function GET(req: Request) {
     }
 }
 
+export async function PUT(req: Request) {
+    try {
+        const { idToken, songId, song, artist } = await req.json();
+
+        if (!idToken || !songId || !song || !artist) {
+            return NextResponse.json(
+                { error: "Missing required fields" },
+                { status: 400 }
+            );
+        }
+
+        const decoded = await auth.verifyIdToken(idToken);
+        const userId = decoded.uid;
+
+        await sql`
+      update songs
+      set song_title = ${song}, artist = ${artist}
+      where id = ${songId}
+      and user_id = ${userId}
+    `;
+
+        return NextResponse.json({ ok: true });
+    } catch (error) {
+        console.error(error);
+        return NextResponse.json(
+            { error: "Unauthorized or invalid request" },
+            { status: 401 }
+        );
+    }
+}
+
 export async function DELETE(req: Request) {
     try {
         const { idToken, songId } = await req.json();
@@ -90,16 +111,16 @@ export async function DELETE(req: Request) {
         const userId = decoded.uid;
 
         await sql`
-            delete from songs
-            where id = ${songId}
-            and user_id = ${userId}
-        `;
+      delete from songs
+      where id = ${songId}
+      and user_id = ${userId}
+    `;
 
         return NextResponse.json({ ok: true });
     } catch (error) {
         console.error(error);
         return NextResponse.json(
-            { error: "UnAuthorizaed or invalid request" },
+            { error: "Unauthorized or invalid request" },
             { status: 401 }
         );
     }

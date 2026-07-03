@@ -10,6 +10,9 @@ export default function App() {
   const [pieces, setPieces] = useState<any[]>([]);
   const [logs, setLogs] = useState<any[]>([]);
   const [selectedPieces, setSelectedPieces] = useState<any[]>([]);
+  const [editingSongId, setEditingSongId] = useState<number | null>(null);
+  const [editSongTitle, setEditSongTitle] = useState("");
+  const [editArtist, setEditArtist] = useState("");
   const { user, loading, signInWithGoogle, logOut } = useAuth();
   const [songs, setSongs] = useState<any[]>([]);
 
@@ -192,6 +195,68 @@ export default function App() {
 
                     {isExpanded && (
                       <div className="mt-2 pt-4 border-t border-gray-600 text-gray-300">
+                        <span>
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+
+                              if (editingSongId == song.id) {
+                                setEditingSongId(null);
+                                return;
+                              }
+
+                              setEditingSongId(song.id);
+                              setEditSongTitle(song.song_title);
+                              setEditArtist(song.artist);
+                            }}
+                            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+                          >
+                            Edit Song
+                          </button>
+                          {editingSongId === song.id && (
+                            <div className="mt-3 flex flex-col gap-2">
+                              <input
+                                value={editSongTitle}
+                                onChange={(e) => setEditSongTitle(e.target.value)}
+                                className="border border-white px-3 py-2 rounded bg-transparent"
+                                placeholder="Song title"
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                              <input
+                                value={editArtist}
+                                onChange={(e) => setEditArtist(e.target.value)}
+                                className="border border-white px-3 py-2 rounded bg-transparent"
+                                placeholder="Artist"
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                              <button
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+
+                                  const idToken = await user.getIdToken();
+
+                                  await fetch("/api/songs", {
+                                    method: "PUT",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({
+                                      idToken,
+                                      songId: song.id,
+                                      song: editSongTitle,
+                                      artist: editArtist,
+                                    }),
+                                  });
+
+                                  await refreshSongs(idToken);
+                                  await refreshLogs(idToken);
+                                  setEditingSongId(null);
+                                }}
+                                className="px-4 py-2 bg-green-500 text-white rounded"
+                              >
+                                Save
+                              </button>
+                            </div>
+                          )}
+                        </span>
                         <span>
                           <h1>Add practice log</h1>
                         </span>
