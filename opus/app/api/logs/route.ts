@@ -36,6 +36,18 @@ export async function POST(req: Request) {
         const decoded = await auth.verifyIdToken(idToken);
         const userId = decoded.uid;
 
+        const ownedSong = await sql`
+            select id
+            from songs
+            where id = ${songId}
+              and user_id = ${userId}
+            limit 1
+        `;
+
+        if (ownedSong.length === 0) {
+            return NextResponse.json({ error: "Song not found" }, { status: 404 });
+        }
+
         await sql`
             insert into practice_logs (user_id, song_id, duration_minutes)
             values (${userId}, ${songId}, ${durationMinutes})
