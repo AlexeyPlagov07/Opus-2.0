@@ -46,30 +46,45 @@ export function SongCard({
 
   return (
     <li
-      className="cursor-pointer flex-col mb-3 border border-gray-500 rounded-lg p-4 w-96"
+      className="cursor-pointer rounded-2xl border border-(--surface-border) bg-(--surface-solid) p-5 shadow-sm transition-all hover:shadow-md"
       onClick={onToggleExpanded}
     >
-      <div className="flex items-center justify-between">
-        <div className="flex flex-col">
-          <span>Song Title: {song.song_title}</span>
-          <span>Artist: {song.artist}</span>
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex min-w-0 flex-col">
+          <span className="truncate font-medium">{song.song_title}</span>
+          <span className="truncate text-sm text-(--muted)">{song.artist}</span>
         </div>
+        <svg
+          viewBox="0 0 24 24"
+          className={`h-4 w-4 shrink-0 text-(--muted) transition-transform duration-200 ${isExpanded ? "rotate-90" : ""
+            }`}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M9 6l6 6-6 6" />
+        </svg>
       </div>
 
       {isExpanded && (
         <div
-          className="mt-2 pt-4 border-t border-gray-600 text-gray-300"
+          className="mt-4 flex flex-col gap-4 border-t border-(--surface-border) pt-4"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="mb-4">
-            <RecordingAnalyzer
-              songId={song.id}
-              idToken={idToken}
-              onAnalysisComplete={(analysis: RecordingAnalysis) => {
-                console.log("Analysis complete", analysis);
-              }}
-            />
+          <RecordingAnalyzer
+            songId={song.id}
+            songTitle={song.song_title}
+            artist={song.artist}
+            idToken={idToken}
+            onAnalysisComplete={(analysis: RecordingAnalysis) => {
+              console.log("Analysis complete", analysis);
+            }}
+          />
 
+          <div>
             <button
               type="button"
               onClick={(e) => {
@@ -84,9 +99,9 @@ export function SongCard({
                 setDraftArtist(song.artist);
                 setIsEditing(true);
               }}
-              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+              className="rounded-full bg-black/5 px-4 py-2 text-sm font-medium transition-colors hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/15"
             >
-              Edit Song
+              {isEditing ? "Cancel edit" : "Edit song"}
             </button>
 
             {isEditing && (
@@ -104,16 +119,16 @@ export function SongCard({
             )}
           </div>
 
-          <div className="mb-4">
-            <h1 className="mb-2">Add practice log</h1>
+          <div>
+            <h3 className="mb-2 text-sm font-semibold text-(--muted)">Add practice log</h3>
             <div className="flex gap-2">
               <input
                 name="practiceDuration"
                 value={practiceDuration}
                 onChange={(e) => setPracticeDuration(e.target.value)}
                 onClick={(e) => e.stopPropagation()}
-                className="border border-white px-3 py-2 rounded bg-transparent"
-                placeholder="Practice Duration (min)"
+                className="min-w-0 flex-1 rounded-xl border border-(--surface-border) bg-black/[0.02] px-3 py-2 text-sm outline-none transition focus:border-(--accent) focus:ring-2 focus:ring-(--accent)/20 dark:bg-white/5"
+                placeholder="Minutes practiced"
               />
               <button
                 type="button"
@@ -130,9 +145,9 @@ export function SongCard({
                   await onAddPracticeLog(song.id, duration);
                   setPracticeDuration("");
                 }}
-                className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+                className="shrink-0 rounded-xl bg-(--accent) px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-(--accent-hover)"
               >
-                Enter Log
+                Log
               </button>
             </div>
           </div>
@@ -143,9 +158,9 @@ export function SongCard({
               e.stopPropagation();
               await onDeleteSong(song.id);
             }}
-            className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
+            className="self-start rounded-full px-4 py-2 text-sm font-medium text-(--danger) transition-colors hover:bg-(--danger)/10"
           >
-            Delete Piece
+            Delete piece
           </button>
         </div>
       )}

@@ -20,18 +20,18 @@ export function SongEditor({
   onCancel,
 }: SongEditorProps) {
   return (
-    <div className="mt-3 flex flex-col gap-2">
+    <div className="mt-3 flex flex-col gap-2 rounded-xl bg-black/[0.02] p-3 dark:bg-white/5">
       <input
         value={songTitle}
         onChange={(e) => onSongTitleChange(e.target.value)}
-        className="border border-white px-3 py-2 rounded bg-transparent"
+        className="rounded-xl border border-(--surface-border) bg-(--surface-solid) px-3 py-2 text-sm outline-none transition focus:border-(--accent) focus:ring-2 focus:ring-(--accent)/20"
         placeholder="Song title"
         onClick={(e) => e.stopPropagation()}
       />
       <input
         value={artist}
         onChange={(e) => onArtistChange(e.target.value)}
-        className="border border-white px-3 py-2 rounded bg-transparent"
+        className="rounded-xl border border-(--surface-border) bg-(--surface-solid) px-3 py-2 text-sm outline-none transition focus:border-(--accent) focus:ring-2 focus:ring-(--accent)/20"
         placeholder="Artist"
         onClick={(e) => e.stopPropagation()}
       />
@@ -39,14 +39,14 @@ export function SongEditor({
         <button
           type="button"
           onClick={onSave}
-          className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition-colors"
+          className="rounded-full bg-(--accent) px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-(--accent-hover)"
         >
           Save
         </button>
         <button
           type="button"
           onClick={onCancel}
-          className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
+          className="rounded-full bg-black/5 px-4 py-2 text-sm font-medium transition-colors hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/15"
         >
           Cancel
         </button>

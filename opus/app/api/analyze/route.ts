@@ -18,6 +18,8 @@ const openai = new OpenAI({
 });
 
 type AnalysisResult = {
+    matches_expected_song: boolean;
+    mismatch_reason: string | null;
     summary: string;
     strengths: string[];
     weaknesses: string[];
@@ -74,7 +76,7 @@ export async function POST(req: Request) {
                 {
                     role: "system",
                     content:
-                        "You are an experienced clssical piano instructor. Your job is to provide constructive, encouraging, and specific feedback on practice recordings. Do not invent mistakes that cannot be reasonable inferred from the audio. If you are uncertain, explicitly state your uncertainty. Focus on: -Tempo consistency, -Rhythm, -Dynamics, -Articulation, -Musical phrasing, - Obvious hesitations or interruptions, - Overall practice suggestions. Do not critique recording quality unless it prevents analysis. Keep feedback supportive and actionable. Return valid JSON only.",
+                        "You are an experienced classical piano instructor writing private notes for a student right after their practice session. Write the way a real teacher actually talks: plain, direct, specific. Do not sound like an AI assistant - no emojis, no exclamation points, no filler like 'Great job!' or 'I hope this helps', no generic encouragement that isn't tied to something specific in the recording, no bullet-point cliches or corporate phrasing. Before writing any feedback, first check whether the recording actually sounds like the expected piece. You are given the expected song title and artist, plus a speech-to-text transcript of the recording (the transcript will often be empty or nonsense for purely instrumental playing - that is expected and is not evidence of a mismatch). Only set matches_expected_song to false if the transcript contains clear, specific evidence that a different, identifiable song was performed (for example, recognizable lyrics or a spoken remark naming a different piece). If the transcript is empty, garbled, or simply inconclusive, assume the student played the correct piece and set matches_expected_song to true. When matches_expected_song is false, briefly explain why in mismatch_reason and leave summary, strengths, weaknesses, and action_items as empty. When matches_expected_song is true, set mismatch_reason to null and do not invent mistakes that cannot be reasonably inferred from the audio - if uncertain, say so briefly and move on. Focus feedback on: tempo consistency, rhythm, dynamics, articulation, musical phrasing, obvious hesitations or interruptions, and concrete practice suggestions. Do not critique recording quality unless it prevents analysis. Return valid JSON only.",
                 },
                 {
                     role: "user",
@@ -83,10 +85,14 @@ export async function POST(req: Request) {
                         artist: song.artist,
                         transcript,
                         instructions: {
-                            summary: "Write one short overall summary.",
-                            strengths: "List 2 to 4 strengths.",
-                            weaknesses: "List 2 to 4 weaknesses.",
-                            action_items: "List 3 to 5 concrete practice actions.",
+                            matches_expected_song:
+                                "true or false - whether the recording sounds like the expected song/artist.",
+                            mismatch_reason:
+                                "If matches_expected_song is false, briefly explain why. Otherwise null.",
+                            summary: "Write one short overall summary. Empty string if matches_expected_song is false.",
+                            strengths: "List 2 to 4 strengths. Empty array if matches_expected_song is false.",
+                            weaknesses: "List 2 to 4 weaknesses. Empty array if matches_expected_song is false.",
+                            action_items: "List 3 to 5 concrete practice actions. Empty array if matches_expected_song is false.",
                         },
                     }),
                 },
@@ -100,6 +106,8 @@ export async function POST(req: Request) {
             parsed = JSON.parse(raw) as AnalysisResult;
         } catch {
             parsed = {
+                matches_expected_song: true,
+                mismatch_reason: null,
                 summary: "Unable to parse model output.",
                 strengths: [],
                 weaknesses: [],
@@ -111,6 +119,9 @@ export async function POST(req: Request) {
             songId,
             analysis: {
                 transcript,
+                matches_expected_song: Boolean(parsed.matches_expected_song ?? true),
+                mismatch_reason:
+                    typeof parsed.mismatch_reason === "string" ? parsed.mismatch_reason : null,
                 feedback_summary: String(parsed.summary ?? ""),
                 strengths: Array.isArray(parsed.strengths) ? parsed.strengths : [],
                 weaknesses: Array.isArray(parsed.weaknesses) ? parsed.weaknesses : [],

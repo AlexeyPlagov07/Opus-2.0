@@ -19,6 +19,8 @@ export type PracticeLog = {
 
 export type RecordingAnalysis = {
   transcript: string;
+  matches_expected_song: boolean;
+  mismatch_reason: string | null;
   feedback_summary: string;
   strengths: string[];
   weaknesses: string[];
