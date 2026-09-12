@@ -1,17 +1,6 @@
 import { NextResponse } from "next/server";
-import { initializeApp, getApps, cert } from "firebase-admin/app";
-import { getAuth } from "firebase-admin/auth";
+import { getFirebaseAuth } from "@/lib/firebase-admin";
 import { sql } from "@/lib/neon";
-
-if (!getApps().length) {
-    initializeApp({
-        credential: cert(
-            JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY as string)
-        ),
-    });
-}
-
-const auth = getAuth();
 
 export async function POST(req: Request) {
     try {
@@ -33,7 +22,7 @@ export async function POST(req: Request) {
             );
         }
 
-        const decoded = await auth.verifyIdToken(idToken);
+        const decoded = await getFirebaseAuth().verifyIdToken(idToken);
         const userId = decoded.uid;
 
         const ownedSong = await sql`
@@ -72,7 +61,7 @@ export async function GET(req: Request) {
         }
 
         const idToken = authHeader.slice(7);
-        const decoded = await auth.verifyIdToken(idToken);
+        const decoded = await getFirebaseAuth().verifyIdToken(idToken);
         const userId = decoded.uid;
 
         const logs = await sql`

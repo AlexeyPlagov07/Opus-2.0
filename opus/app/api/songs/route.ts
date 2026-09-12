@@ -1,15 +1,6 @@
 import { NextResponse } from "next/server";
-import { initializeApp, getApps, cert } from "firebase-admin/app";
-import { getAuth } from "firebase-admin/auth";
+import { getFirebaseAuth } from "@/lib/firebase-admin";
 import { sql } from "@/lib/neon";
-
-if (!getApps().length) {
-    initializeApp({
-        credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY as string)),
-    });
-}
-
-const auth = getAuth();
 
 export async function POST(req: Request) {
     try {
@@ -22,7 +13,7 @@ export async function POST(req: Request) {
             );
         }
 
-        const decoded = await auth.verifyIdToken(idToken);
+        const decoded = await getFirebaseAuth().verifyIdToken(idToken);
         const userId = decoded.uid;
 
         await sql`
@@ -49,7 +40,7 @@ export async function GET(req: Request) {
         }
 
         const idToken = authHeader.slice(7);
-        const decoded = await auth.verifyIdToken(idToken);
+        const decoded = await getFirebaseAuth().verifyIdToken(idToken);
         const userId = decoded.uid;
 
         const songs = await sql`
@@ -60,7 +51,8 @@ export async function GET(req: Request) {
     `;
 
         return NextResponse.json({ songs });
-    } catch {
+    } catch (error) {
+        console.error(error);
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 }
@@ -76,7 +68,7 @@ export async function PUT(req: Request) {
             );
         }
 
-        const decoded = await auth.verifyIdToken(idToken);
+        const decoded = await getFirebaseAuth().verifyIdToken(idToken);
         const userId = decoded.uid;
 
         await sql`
@@ -107,7 +99,7 @@ export async function DELETE(req: Request) {
             );
         }
 
-        const decoded = await auth.verifyIdToken(idToken);
+        const decoded = await getFirebaseAuth().verifyIdToken(idToken);
         const userId = decoded.uid;
 
         await sql`

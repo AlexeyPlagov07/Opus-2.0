@@ -1,17 +1,8 @@
 import { NextResponse } from "next/server";
-import { initializeApp, getApps, cert } from "firebase-admin/app";
-import { getAuth } from "firebase-admin/auth";
+import { getFirebaseAuth } from "@/lib/firebase-admin";
 import OpenAI from "openai";
 import { sql } from "@/lib/neon";
 import type { Song } from "@/lib/types";
-
-if (!getApps().length) {
-    initializeApp({
-        credential: cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY as string)),
-    });
-}
-
-const auth = getAuth();
 
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
@@ -43,7 +34,7 @@ export async function POST(req: Request) {
             );
         }
 
-        const decoded = await auth.verifyIdToken(idToken);
+        const decoded = await getFirebaseAuth().verifyIdToken(idToken);
         const userId = decoded.uid;
 
         const songRows = await sql`
