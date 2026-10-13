@@ -5,7 +5,7 @@ import type { RecordingAnalysis, RecordingStatus } from "@/lib/types";
 
 // Below this, audio is treated as silence/room noise rather than an instrument playing.
 // RMS is computed on a 0-1 normalized scale from time-domain samples; raise it to require louder playing.
-const SILENCE_RMS_THRESHOLD = 0.2;
+const SILENCE_RMS_THRESHOLD = 0.05;
 const MIN_RECORDING_MS = 1500;
 
 type RecordingAnalyzerProps = {
