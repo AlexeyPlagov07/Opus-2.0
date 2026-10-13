@@ -1,9 +1,0 @@
-# Railway deployment configuration
-# Place this in audio-service/railway.toml
-
-[build]
-builder = "nixpacks"
-
-[deploy]
-numReplicas = 1
-restartPolicyType = "on_failure"

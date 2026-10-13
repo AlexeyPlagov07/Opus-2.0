@@ -1,9 +1,0 @@
-runtime: python311
-
-env: standard
-
-entrypoint: gunicorn -w 1 -b 0.0.0.0:$PORT main:app
-
-env_variables:
-  PYTHONUNBUFFERED: "1"
-  LOG_LEVEL: "INFO"
