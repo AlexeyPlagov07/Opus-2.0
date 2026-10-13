@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server";
 import { getFirebaseAuth } from "@/lib/firebase-admin";
-import OpenAI from "openai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { sql } from "@/lib/neon";
 import type { Song } from "@/lib/types";
 
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-});
+const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY || "");
 
 type AnalysisResult = {
     matches_expected_song: boolean;
@@ -53,49 +51,64 @@ export async function POST(req: Request) {
 
         const song = songs[0];
 
-        const transcription = await openai.audio.transcriptions.create({
-            file: audioFile,
-            model: "whisper-1",
-        });
+        // Convert audio file to base64 for Gemini
+        const audioBuffer = await audioFile.arrayBuffer();
+        const audioBase64 = Buffer.from(audioBuffer).toString("base64");
 
-        const transcript = transcription.text?.trim() ?? "";
+        // Determine MIME type from file
+        const mimeType = audioFile.type || "audio/webm";
 
-        const feedbackResponse = await openai.chat.completions.create({
-            model: "gpt-4o-mini",
-            temperature: 0.3,
-            messages: [
-                {
-                    role: "system",
-                    content:
-                        "You are an experienced classical piano instructor writing private notes for a student right after their practice session. Write the way a real teacher actually talks: plain, direct, specific. Do not sound like an AI assistant - no emojis, no exclamation points, no filler like 'Great job!' or 'I hope this helps', no generic encouragement that isn't tied to something specific in the recording, no bullet-point cliches or corporate phrasing. Before writing any feedback, first check whether the recording actually sounds like the expected piece. You are given the expected song title and artist, plus a speech-to-text transcript of the recording (the transcript will often be empty or nonsense for purely instrumental playing - that is expected and is not evidence of a mismatch). Only set matches_expected_song to false if the transcript contains clear, specific evidence that a different, identifiable song was performed (for example, recognizable lyrics or a spoken remark naming a different piece). If the transcript is empty, garbled, or simply inconclusive, assume the student played the correct piece and set matches_expected_song to true. When matches_expected_song is false, briefly explain why in mismatch_reason and leave summary, strengths, weaknesses, and action_items as empty. When matches_expected_song is true, set mismatch_reason to null and do not invent mistakes that cannot be reasonably inferred from the audio - if uncertain, say so briefly and move on. Focus feedback on: tempo consistency, rhythm, dynamics, articulation, musical phrasing, obvious hesitations or interruptions, and concrete practice suggestions. Do not critique recording quality unless it prevents analysis. Return valid JSON only.",
+        // Use Gemini 3.8 Flash to analyze audio directly
+        const model = genAI.getGenerativeModel({ model: "gemini-3.8-flash" });
+
+        const feedbackResponse = await model.generateContent([
+            {
+                text: `You are an experienced classical piano instructor writing private notes for a student right after their practice session. Write the way a real teacher actually talks: plain, direct, specific. Do not sound like an AI assistant - no emojis, no exclamation points, no filler like 'Great job!' or 'I hope this helps', no generic encouragement that isn't tied to something specific in the recording, no bullet-point cliches or corporate phrasing.
+
+Listen to this piano recording and analyze it. The student was supposed to play:
+- Song: ${song.song_title}
+- Artist: ${song.artist}
+
+First, determine whether this recording actually sounds like the expected piece. Only set matches_expected_song to false if you can clearly identify that a different, identifiable song was performed. If uncertain, assume it's the correct piece.
+
+When matches_expected_song is false, briefly explain why in mismatch_reason and leave feedback fields empty.
+
+When matches_expected_song is true, analyze the recording and provide:
+- A brief overall summary of the performance
+- 2-4 specific strengths observed in this performance
+- 2-4 specific weaknesses to address
+- 3-5 concrete practice actions
+
+Focus on: tempo consistency, rhythm accuracy, dynamics control, articulation, musical phrasing, hesitations or interruptions, and specific practice suggestions. Do not critique recording quality unless it prevents analysis.
+
+Return ONLY valid JSON in this exact format (no markdown, no extra text):
+{
+  "matches_expected_song": true/false,
+  "mismatch_reason": null or string,
+  "summary": "string or empty",
+  "strengths": ["string", "string"],
+  "weaknesses": ["string", "string"],
+  "action_items": ["string", "string", "string"]
+}`,
+            },
+            {
+                inlineData: {
+                    mimeType,
+                    data: audioBase64,
                 },
-                {
-                    role: "user",
-                    content: JSON.stringify({
-                        songTitle: song.song_title,
-                        artist: song.artist,
-                        transcript,
-                        instructions: {
-                            matches_expected_song:
-                                "true or false - whether the recording sounds like the expected song/artist.",
-                            mismatch_reason:
-                                "If matches_expected_song is false, briefly explain why. Otherwise null.",
-                            summary: "Write one short overall summary. Empty string if matches_expected_song is false.",
-                            strengths: "List 2 to 4 strengths. Empty array if matches_expected_song is false.",
-                            weaknesses: "List 2 to 4 weaknesses. Empty array if matches_expected_song is false.",
-                            action_items: "List 3 to 5 concrete practice actions. Empty array if matches_expected_song is false.",
-                        },
-                    }),
-                },
-            ],
-        });
+            },
+        ]);
 
-        const raw = feedbackResponse.choices[0]?.message?.content ?? "{}";
+        const raw = feedbackResponse.response.text();
 
         let parsed: AnalysisResult;
         try {
-            parsed = JSON.parse(raw) as AnalysisResult;
-        } catch {
+            // Extract JSON from response (in case there's any extra text)
+            const jsonMatch = raw.match(/\{[\s\S]*\}/);
+            const jsonStr = jsonMatch ? jsonMatch[0] : raw;
+            parsed = JSON.parse(jsonStr) as AnalysisResult;
+        } catch (e) {
+            console.error("Failed to parse Gemini response:", raw);
             parsed = {
                 matches_expected_song: true,
                 mismatch_reason: null,
@@ -107,7 +120,6 @@ export async function POST(req: Request) {
         }
 
         const analysis = {
-            transcript,
             matches_expected_song: Boolean(parsed.matches_expected_song ?? true),
             mismatch_reason:
                 typeof parsed.mismatch_reason === "string" ? parsed.mismatch_reason : null,
@@ -117,8 +129,6 @@ export async function POST(req: Request) {
             action_items: Array.isArray(parsed.action_items) ? parsed.action_items : [],
         };
 
-        const audioBuffer = await audioFile.arrayBuffer();
-        const audioBase64 = Buffer.from(audioBuffer).toString("base64");
         const durationSeconds = Math.round(audioFile.size / 16000); // rough estimate
 
         // Ensure the table exists (CREATE TABLE IF NOT EXISTS is idempotent)

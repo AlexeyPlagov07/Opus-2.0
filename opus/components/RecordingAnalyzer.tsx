@@ -30,6 +30,7 @@ export function RecordingAnalyzer({
     const [analysis, setAnalysis] = useState<RecordingAnalysis | null>(null);
     const [audioUrl, setAudioUrl] = useState<string | null>(null);
     const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+    const fileInputRef = useRef<HTMLInputElement | null>(null);
 
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -57,6 +58,31 @@ export function RecordingAnalyzer({
         }
         void audioContextRef.current?.close();
         audioContextRef.current = null;
+    }
+
+    function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setError(null);
+        setAnalysis(null);
+
+        // Validate file is audio
+        if (!file.type.startsWith("audio/")) {
+            setError("Please select an audio file");
+            return;
+        }
+
+        // Create audio URL for playback
+        const url = URL.createObjectURL(file);
+        setAudioUrl(url);
+        recordedBlobRef.current = file as Blob;
+        setStatus("idle");
+
+        // Reset file input so same file can be uploaded again
+        if (fileInputRef.current) {
+            fileInputRef.current.value = "";
+        }
     }
 
     function startLevelMonitoring(stream: MediaStream) {
@@ -247,6 +273,30 @@ export function RecordingAnalyzer({
                     </svg>
                     Stop
                 </button>
+
+                <button
+                    type="button"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        fileInputRef.current?.click();
+                    }}
+                    disabled={status === "recording" || status === "processing" || !idToken}
+                    className="flex items-center gap-2 rounded-full bg-(--accent) px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-(--accent-hover) disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                    <svg viewBox="0 0 24 24" className="h-3 w-3" fill="currentColor" aria-hidden="true">
+                        <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
+                    </svg>
+                    Upload
+                </button>
+
+                <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="audio/*"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                    aria-label="Upload audio file"
+                />
 
                 <span className="flex items-center gap-2 text-sm text-(--muted)">
                     {status === "recording" && (
