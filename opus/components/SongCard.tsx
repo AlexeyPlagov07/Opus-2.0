@@ -14,6 +14,7 @@ type SongCardProps = {
   onAddPracticeLog: (songId: number, durationMinutes: number) => Promise<void>;
   onDeleteSong: (songId: number) => Promise<void>;
   idToken: string;
+  onRecordingSaved?: () => void;
 };
 
 export function SongCard({
@@ -24,6 +25,7 @@ export function SongCard({
   onAddPracticeLog,
   onDeleteSong,
   idToken,
+  onRecordingSaved,
 }: SongCardProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState(song.song_title);
@@ -81,6 +83,7 @@ export function SongCard({
             idToken={idToken}
             onAnalysisComplete={(analysis: RecordingAnalysis) => {
               console.log("Analysis complete", analysis);
+              onRecordingSaved?.();
             }}
           />
 

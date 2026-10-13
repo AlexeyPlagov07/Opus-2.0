@@ -27,9 +27,23 @@ export type RecordingAnalysis = {
   action_items: string[];
 };
 
+export type SavedRecording = {
+  id: number;
+  user_id: string;
+  song_id: number;
+  log_id: number | null;
+  song_title: string;
+  artist: string;
+  audio_url: string;
+  analysis: RecordingAnalysis;
+  created_at: string;
+  duration_seconds: number;
+};
+
 export type AnalyzeRecordingResponse = {
   songId: number;
   analysis: RecordingAnalysis;
+  recordingId?: number;
 };
 
 export type AnalyzeRecordingRequest = {

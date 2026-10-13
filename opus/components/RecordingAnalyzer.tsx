@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useRef, useState } from "react";
-import type { RecordingAnalysis, RecordingStatus } from "@/lib/types";
+import React, { useRef, useState, useEffect } from "react";
+import type { RecordingAnalysis, RecordingStatus, SavedRecording } from "@/lib/types";
 
 // Below this, audio is treated as silence/room noise rather than an instrument playing.
 // RMS is computed on a 0-1 normalized scale from time-domain samples; raise it to require louder playing.
@@ -14,6 +14,7 @@ type RecordingAnalyzerProps = {
     artist: string;
     idToken: string;
     onAnalysisComplete: (analysis: RecordingAnalysis) => void;
+    savedRecording?: SavedRecording | null;
 };
 
 export function RecordingAnalyzer({
@@ -22,20 +23,32 @@ export function RecordingAnalyzer({
     artist,
     idToken,
     onAnalysisComplete,
+    savedRecording,
 }: RecordingAnalyzerProps) {
     const [status, setStatus] = useState<RecordingStatus>("idle");
     const [error, setError] = useState<string | null>(null);
     const [analysis, setAnalysis] = useState<RecordingAnalysis | null>(null);
+    const [audioUrl, setAudioUrl] = useState<string | null>(null);
+    const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
 
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const mediaStreamRef = useRef<MediaStream | null>(null);
     const chunksRef = useRef<BlobPart[]>([]);
+    const recordedBlobRef = useRef<Blob | null>(null);
 
     const audioContextRef = useRef<AudioContext | null>(null);
     const levelIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
     // -1 means level monitoring never started (e.g. AudioContext unavailable) - don't gate on it then.
     const peakLevelRef = useRef(-1);
     const recordingStartedAtRef = useRef(0);
+
+    useEffect(() => {
+        if (savedRecording) {
+            setAnalysis(savedRecording.analysis);
+            onAnalysisComplete(savedRecording.analysis);
+            setStatus("done");
+        }
+    }, [savedRecording, onAnalysisComplete]);
 
     function stopLevelMonitoring() {
         if (levelIntervalRef.current) {
@@ -107,7 +120,7 @@ export function RecordingAnalyzer({
                 stopLevelMonitoring();
 
                 if (recordingDurationMs < MIN_RECORDING_MS) {
-                    setError("That recording was too short to analyze. Record for a few seconds and try again.");
+                    setError("That recording was too short. Record for a few seconds and try again.");
                     setStatus("error");
                     mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
                     mediaStreamRef.current = null;
@@ -115,48 +128,24 @@ export function RecordingAnalyzer({
                 }
 
                 if (peakLevel >= 0 && peakLevel < SILENCE_RMS_THRESHOLD) {
-                    setError("We didn't detect any playing in that recording. Make sure your instrument is audible and try again.");
+                    setError("We didn't detect any playing. Make sure your microphone is audible and try again.");
                     setStatus("error");
                     mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
                     mediaStreamRef.current = null;
                     return;
                 }
 
-                try {
-                    setStatus("processing");
-
-                    const audioBlob = new Blob(chunksRef.current, { type: "audio/webm" });
-                    console.debug("Sending /api/analyze request", {
-                        songId,
-                        hasIdToken: Boolean(idToken),
-                        audioBytes: audioBlob.size,
-                    });
-                    const formData = new FormData();
-                    formData.append("idToken", idToken);
-                    formData.append("songId", String(songId));
-                    formData.append("audio", audioBlob, "recording.webm");
-
-                    const response = await fetch("/api/analyze", {
-                        method: "POST",
-                        body: formData,
-                    });
-
-                    const data = await response.json();
-
-                    if (!response.ok) {
-                        throw new Error(data.error ?? "Failed to analyze recording");
-                    }
-
-                    setAnalysis(data.analysis);
-                    onAnalysisComplete(data.analysis);
-                    setStatus("done");
-                } catch (error) {
-                    setError(error instanceof Error ? error.message : "Analysis failed");
-                    setStatus("error");
-                } finally {
-                    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
-                    mediaStreamRef.current = null;
-                }
+                // Create audio URL for playback
+                const audioBlob = new Blob(chunksRef.current, { type: "audio/webm" });
+                const url = URL.createObjectURL(audioBlob);
+                setAudioUrl(url);
+                
+                // Store blob for later analysis using ref (safer than mediaRecorderRef)
+                recordedBlobRef.current = audioBlob;
+                
+                setStatus("idle");
+                mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+                mediaStreamRef.current = null;
             };
 
             mediaRecorder.start();
@@ -171,6 +160,48 @@ export function RecordingAnalyzer({
     function stopRecording() {
         mediaRecorderRef.current?.stop();
         mediaRecorderRef.current = null;
+    }
+
+    async function analyzeRecording() {
+        if (!audioUrl || !recordedBlobRef.current) {
+            setError("No recording to analyze");
+            return;
+        }
+
+        try {
+            setStatus("processing");
+            setError(null);
+
+            const audioBlob = recordedBlobRef.current;
+            console.debug("Sending /api/analyze request", {
+                songId,
+                hasIdToken: Boolean(idToken),
+                audioBytes: audioBlob.size,
+            });
+            
+            const formData = new FormData();
+            formData.append("idToken", idToken);
+            formData.append("songId", String(songId));
+            formData.append("audio", audioBlob, "recording.webm");
+
+            const response = await fetch("/api/analyze", {
+                method: "POST",
+                body: formData,
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error ?? "Failed to analyze recording");
+            }
+
+            setAnalysis(data.analysis);
+            onAnalysisComplete(data.analysis);
+            setStatus("done");
+        } catch (error) {
+            setError(error instanceof Error ? error.message : "Analysis failed");
+            setStatus("error");
+        }
     }
 
     const statusLabel: Record<RecordingStatus, string> = {
@@ -226,6 +257,71 @@ export function RecordingAnalyzer({
             </div>
 
             {error ? <p className="mt-3 text-sm text-(--danger)">{error}</p> : null}
+
+            {audioUrl && !analysis && (
+                <div className="mt-4 p-4 rounded-lg bg-black/[0.02] dark:bg-white/5">
+                    <h3 className="text-sm font-semibold mb-3">Review Your Recording</h3>
+                    <audio
+                        ref={audioPlayerRef}
+                        src={audioUrl}
+                        controls
+                        className="w-full mb-3"
+                    />
+                    <div className="flex gap-2">
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                void analyzeRecording();
+                            }}
+                            disabled={status === "processing"}
+                            className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-(--accent) px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-(--accent-hover) disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true">
+                                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z" />
+                            </svg>
+                            Analyze
+                        </button>
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setAudioUrl(null);
+                                setError(null);
+                                recordedBlobRef.current = null;
+                            }}
+                            className="flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-(--muted) hover:bg-black/[0.05] dark:hover:bg-white/5 transition-colors"
+                        >
+                            Discard
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {audioUrl && analysis && (
+                <div className="mt-4 p-4 rounded-lg bg-black/[0.02] dark:bg-white/5">
+                    <h3 className="text-sm font-semibold mb-3">Recording Playback</h3>
+                    <audio
+                        ref={audioPlayerRef}
+                        src={audioUrl}
+                        controls
+                        className="w-full mb-3"
+                    />
+                    <button
+                        type="button"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setAudioUrl(null);
+                            setAnalysis(null);
+                            setError(null);
+                            recordedBlobRef.current = null;
+                        }}
+                        className="w-full flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-(--muted) hover:bg-black/[0.05] dark:hover:bg-white/5 transition-colors"
+                    >
+                        Clear Recording
+                    </button>
+                </div>
+            )}
 
             {analysis && analysis.matches_expected_song === false ? (
                 <div className="mt-4 rounded-xl border border-(--danger)/30 bg-(--danger)/10 p-4">

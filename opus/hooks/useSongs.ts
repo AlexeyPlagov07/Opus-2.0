@@ -9,6 +9,11 @@ export default function useSongs() {
   const [songsError, setSongsError] = useState<string | null>(null);
 
   const refreshSongs = useCallback(async (idToken: string) => {
+    if (!idToken || typeof idToken !== "string" || idToken.trim() === "") {
+      setSongs([]);
+      return;
+    }
+
     setLoadingSongs(true);
     setSongsError(null);
 
@@ -22,6 +27,13 @@ export default function useSongs() {
       const data = await response.json();
 
       if (!response.ok) {
+        // If 401, likely not authenticated - silently return empty
+        if (response.status === 401) {
+          console.debug("User not authenticated, skipping songs fetch");
+          setSongs([]);
+          return;
+        }
+        
         throw new Error(data.error ?? "Failed to load songs");
       }
 

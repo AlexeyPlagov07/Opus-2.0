@@ -4,8 +4,11 @@ import React, { useEffect, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import useSongs from "@/hooks/useSongs";
 import useLogs from "@/hooks/useLogs";
+import { useRecordings } from "@/hooks/useRecordings";
 import { SongCard } from "@/components/SongCard";
 import { PracticeLogList } from "@/components/PracticeLogList";
+import { RecordingsList } from "@/components/RecordingsList";
+import type { SavedRecording } from "@/lib/types";
 
 export default function App() {
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
@@ -15,6 +18,8 @@ export default function App() {
   const { user, loading, signInWithGoogle, logOut } = useAuth();
   const { songs, refreshSongs, addSong, updateSong, deleteSong } = useSongs();
   const { logs, refreshLogs, addLog } = useLogs();
+  const { recordings, refreshRecordings } = useRecordings();
+  const [selectedRecording, setSelectedRecording] = useState<SavedRecording | null>(null);
 
   const [idToken, setIdToken] = useState("");
 
@@ -34,10 +39,11 @@ export default function App() {
       const idToken = await user.getIdToken();
       await refreshSongs(idToken);
       await refreshLogs(idToken);
+      await refreshRecordings(idToken);
     }
 
     loadData();
-  }, [user, refreshSongs, refreshLogs]);
+  }, [user, refreshSongs, refreshLogs, refreshRecordings]);
 
   async function handleAddSong() {
     if (!user) return;
@@ -214,8 +220,8 @@ export default function App() {
           <StatCard label="Practice time" value={formatDuration(totalPracticeMinutes)} />
         </div>
 
-        <div className="flex flex-col gap-8 lg:flex-row lg:items-start">
-          <section className="flex-1">
+        <div className="flex flex-col gap-8 lg:flex-row lg:items-stretch">
+          <section className="flex-1 flex flex-col">
             <div className="mb-6 rounded-2xl border border-(--surface-border) bg-(--surface-solid) p-5 shadow-sm">
               <h2 className="mb-3 text-sm font-semibold text-(--muted)">Add a piece</h2>
               <div className="flex flex-col gap-3 sm:flex-row">
@@ -265,16 +271,129 @@ export default function App() {
                     onAddPracticeLog={handleAddPracticeLog}
                     onDeleteSong={handleDeleteSong}
                     idToken={idToken}
+                    onRecordingSaved={() => {
+                      if (user) {
+                        user.getIdToken().then((token) => {
+                          void refreshRecordings(token);
+                        });
+                      }
+                    }}
                   />
                 ))}
               </ul>
             )}
           </section>
 
-          <aside className="w-full lg:w-96 lg:shrink-0">
-            <PracticeLogList logs={logs} />
+          <aside className="w-full lg:w-96 lg:shrink-0 flex flex-col gap-6 lg:max-h-[calc(100vh-12rem)] lg:overflow-y-auto">
+            <PracticeLogList 
+              logs={logs}
+              recordings={recordings}
+              onRecordingClick={(recording) => {
+                setSelectedRecording(recording);
+              }}
+            />
+            {recordings.length > 0 && (
+              <RecordingsList 
+                recordings={recordings} 
+                onRecordingClick={(recording) => {
+                  setSelectedRecording(recording);
+                }}
+              />
+            )}
           </aside>
         </div>
+
+        {selectedRecording && (
+          <div 
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+            onClick={() => setSelectedRecording(null)}
+          >
+            <div 
+              className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-(--surface-solid) border border-(--surface-border) p-6"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-lg font-semibold">{selectedRecording.song_title}</h2>
+                  <p className="text-sm text-(--muted)">{selectedRecording.artist}</p>
+                  <p className="text-xs text-(--muted) mt-1">
+                    {new Date(selectedRecording.created_at).toLocaleString()}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setSelectedRecording(null)}
+                  className="rounded-full p-2 hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+                >
+                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">
+                    <path d="M18 6L6 18M6 6l12 12" strokeWidth="2" stroke="currentColor" strokeLinecap="round" />
+                  </svg>
+                </button>
+              </div>
+
+              <div className="prose prose-sm dark:prose-invert max-w-none">
+                {selectedRecording.analysis.matches_expected_song === false ? (
+                  <div className="rounded-lg border border-(--danger)/30 bg-(--danger)/10 p-4 mb-6">
+                    <h3 className="font-semibold text-(--danger) mb-2">Wrong piece detected</h3>
+                    <p className="text-(--muted) text-sm">
+                      {selectedRecording.analysis.mismatch_reason || "This recording doesn't match the expected piece."}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {selectedRecording.analysis.feedback_summary && (
+                      <div>
+                        <h3 className="font-semibold mb-2">Summary</h3>
+                        <p className="text-(--muted) text-sm">{selectedRecording.analysis.feedback_summary}</p>
+                      </div>
+                    )}
+
+                    {selectedRecording.analysis.transcript && (
+                      <div>
+                        <h3 className="font-semibold mb-2">Transcript</h3>
+                        <p className="text-(--muted) text-xs italic">{selectedRecording.analysis.transcript}</p>
+                      </div>
+                    )}
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      {selectedRecording.analysis.strengths.length > 0 && (
+                        <div>
+                          <h3 className="font-semibold text-(--success) mb-2 text-sm">Strengths</h3>
+                          <ul className="list-disc pl-5 text-sm text-(--muted) space-y-1">
+                            {selectedRecording.analysis.strengths.map((item) => (
+                              <li key={item}>{item}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {selectedRecording.analysis.weaknesses.length > 0 && (
+                        <div>
+                          <h3 className="font-semibold text-(--danger) mb-2 text-sm">Weaknesses</h3>
+                          <ul className="list-disc pl-5 text-sm text-(--muted) space-y-1">
+                            {selectedRecording.analysis.weaknesses.map((item) => (
+                              <li key={item}>{item}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+
+                    {selectedRecording.analysis.action_items.length > 0 && (
+                      <div>
+                        <h3 className="font-semibold mb-2 text-sm">Action Items</h3>
+                        <ul className="list-disc pl-5 text-sm text-(--muted) space-y-1">
+                          {selectedRecording.analysis.action_items.map((item) => (
+                            <li key={item}>{item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

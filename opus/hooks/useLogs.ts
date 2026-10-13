@@ -9,6 +9,11 @@ export default function useLogs() {
   const [logsError, setLogsError] = useState<string | null>(null);
 
   const refreshLogs = useCallback(async (idToken: string) => {
+    if (!idToken || typeof idToken !== "string" || idToken.trim() === "") {
+      setLogs([]);
+      return;
+    }
+
     setLoadingLogs(true);
     setLogsError(null);
 
@@ -22,6 +27,13 @@ export default function useLogs() {
       const data = await response.json();
 
       if (!response.ok) {
+        // If 401, likely not authenticated - silently return empty
+        if (response.status === 401) {
+          console.debug("User not authenticated, skipping logs fetch");
+          setLogs([]);
+          return;
+        }
+        
         throw new Error(data.error ?? "Failed to load logs");
       }
 

@@ -106,18 +106,106 @@ export async function POST(req: Request) {
             };
         }
 
+        const analysis = {
+            transcript,
+            matches_expected_song: Boolean(parsed.matches_expected_song ?? true),
+            mismatch_reason:
+                typeof parsed.mismatch_reason === "string" ? parsed.mismatch_reason : null,
+            feedback_summary: String(parsed.summary ?? ""),
+            strengths: Array.isArray(parsed.strengths) ? parsed.strengths : [],
+            weaknesses: Array.isArray(parsed.weaknesses) ? parsed.weaknesses : [],
+            action_items: Array.isArray(parsed.action_items) ? parsed.action_items : [],
+        };
+
+        const audioBuffer = await audioFile.arrayBuffer();
+        const audioBase64 = Buffer.from(audioBuffer).toString("base64");
+        const durationSeconds = Math.round(audioFile.size / 16000); // rough estimate
+
+        // Ensure the table exists (CREATE TABLE IF NOT EXISTS is idempotent)
+        try {
+            await sql`
+                CREATE TABLE IF NOT EXISTS saved_recordings (
+                    id SERIAL PRIMARY KEY,
+                    user_id VARCHAR(255) NOT NULL,
+                    song_id UUID NOT NULL,
+                    log_id INTEGER,
+                    audio_data BYTEA NOT NULL,
+                    analysis_json JSONB NOT NULL,
+                    duration_seconds INTEGER NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            `;
+            // Create indexes separately to avoid constraint issues
+            await sql`CREATE INDEX IF NOT EXISTS idx_saved_recordings_user_id ON saved_recordings(user_id)`;
+            await sql`CREATE INDEX IF NOT EXISTS idx_saved_recordings_created_at ON saved_recordings(created_at DESC)`;
+            await sql`CREATE INDEX IF NOT EXISTS idx_saved_recordings_log_id ON saved_recordings(log_id)`;
+        } catch (tableError) {
+            // If table creation fails, log but continue (table might already exist)
+            console.warn("Table creation warning:", tableError);
+        }
+
+        // Add log_id column if it doesn't exist (schema migration)
+        try {
+            await sql`
+                ALTER TABLE saved_recordings 
+                ADD COLUMN IF NOT EXISTS log_id INTEGER
+            `;
+        } catch (migrationError) {
+            console.warn("Migration warning (log_id column):", migrationError);
+        }
+
+        const result = await sql`
+            insert into saved_recordings (
+                user_id,
+                song_id,
+                audio_data,
+                analysis_json,
+                duration_seconds
+            )
+            values (
+                ${userId},
+                ${songId},
+                ${audioBase64},
+                ${JSON.stringify(analysis)},
+                ${durationSeconds}
+            )
+            returning id
+        `;
+
+        const recordingId = (result as Array<{ id: number }>)[0]?.id;
+
+        // Create a practice log entry and link the recording to it
+        let logId: number | null = null;
+        try {
+            const logResult = await sql`
+                insert into practice_logs (user_id, song_id, duration_minutes)
+                values (
+                    ${userId},
+                    ${songId},
+                    ${Math.ceil(durationSeconds / 60)}
+                )
+                returning id
+            `;
+            logId = (logResult as Array<{ id: number }>)[0]?.id ?? null;
+
+            // Update recording with log_id if log was created
+            if (logId && recordingId) {
+                await sql`
+                    update saved_recordings
+                    set log_id = ${logId}
+                    where id = ${recordingId}
+                `;
+            }
+        } catch (logError) {
+            console.warn("Failed to create practice log:", logError);
+            // Continue anyway - recording was still saved
+        }
+
         return NextResponse.json({
             songId,
-            analysis: {
-                transcript,
-                matches_expected_song: Boolean(parsed.matches_expected_song ?? true),
-                mismatch_reason:
-                    typeof parsed.mismatch_reason === "string" ? parsed.mismatch_reason : null,
-                feedback_summary: String(parsed.summary ?? ""),
-                strengths: Array.isArray(parsed.strengths) ? parsed.strengths : [],
-                weaknesses: Array.isArray(parsed.weaknesses) ? parsed.weaknesses : [],
-                action_items: Array.isArray(parsed.action_items) ? parsed.action_items : [],
-            },
+            recordingId,
+            logId,
+            analysis,
         });
     } catch (error) {
         console.error(error);
