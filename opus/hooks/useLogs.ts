@@ -45,7 +45,7 @@ export default function useLogs() {
     }
   }, []);
 
-  const addLog = useCallback(async (idToken: string, songId: number, durationMinutes: number) => {
+  const addLog = useCallback(async (idToken: string, songId: number, durationMinutes: number, notes?: string | null) => {
     const response = await fetch("/api/logs", {
       method: "POST",
       headers: {
@@ -55,6 +55,7 @@ export default function useLogs() {
         idToken,
         songId,
         durationMinutes,
+        notes,
       }),
     });
 

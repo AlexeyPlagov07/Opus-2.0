@@ -11,7 +11,7 @@ type SongCardProps = {
   isExpanded: boolean;
   onToggleExpanded: () => void;
   onUpdateSong: (songId: number, songTitle: string, artist: string) => Promise<void>;
-  onAddPracticeLog: (songId: number, durationMinutes: number) => Promise<void>;
+  onAddPracticeLog: (songId: number, durationMinutes: number, notes?: string | null) => Promise<void>;
   onDeleteSong: (songId: number) => Promise<void>;
   idToken: string;
   onRecordingSaved?: () => void;
@@ -31,11 +31,13 @@ export function SongCard({
   const [draftTitle, setDraftTitle] = useState(song.song_title);
   const [draftArtist, setDraftArtist] = useState(song.artist);
   const [practiceDuration, setPracticeDuration] = useState("");
+  const [practiceNotes, setPracticeNotes] = useState("");
 
   useEffect(() => {
     if (!isExpanded) {
       setIsEditing(false);
       setPracticeDuration("");
+      setPracticeNotes("");
     }
   }, [isExpanded]);
 
@@ -124,7 +126,7 @@ export function SongCard({
 
           <div>
             <h3 className="mb-2 text-sm font-semibold text-(--muted)">Add practice log</h3>
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2">
               <input
                 name="practiceDuration"
                 value={practiceDuration}
@@ -132,6 +134,15 @@ export function SongCard({
                 onClick={(e) => e.stopPropagation()}
                 className="min-w-0 flex-1 rounded-xl border border-(--surface-border) bg-black/[0.02] px-3 py-2 text-sm outline-none transition focus:border-(--accent) focus:ring-2 focus:ring-(--accent)/20 dark:bg-white/5"
                 placeholder="Minutes practiced"
+              />
+              <textarea
+                name="practiceNotes"
+                value={practiceNotes}
+                onChange={(e) => setPracticeNotes(e.target.value)}
+                onClick={(e) => e.stopPropagation()}
+                className="min-w-0 flex-1 rounded-xl border border-(--surface-border) bg-black/[0.02] px-3 py-2 text-sm outline-none transition focus:border-(--accent) focus:ring-2 focus:ring-(--accent)/20 dark:bg-white/5 resize-none"
+                placeholder="Session notes (optional)"
+                rows={3}
               />
               <button
                 type="button"
@@ -145,8 +156,9 @@ export function SongCard({
                     return;
                   }
 
-                  await onAddPracticeLog(song.id, duration);
+                  await onAddPracticeLog(song.id, duration, practiceNotes.trim() || null);
                   setPracticeDuration("");
+                  setPracticeNotes("");
                 }}
                 className="shrink-0 rounded-xl bg-(--accent) px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-(--accent-hover)"
               >

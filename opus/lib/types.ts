@@ -14,6 +14,7 @@ export type PracticeLog = {
   song_title: string;
   artist: string;
   duration_minutes: number;
+  notes: string | null;
   created_at: string;
 };
 

@@ -78,6 +78,11 @@ export function PracticeLogList({ logs, recordings, onRecordingClick }: Practice
                                 <p className="mt-2 text-xs text-(--muted)">
                                     {new Date(log.created_at).toLocaleString()}
                                 </p>
+                                {log.notes && (
+                                    <p className="mt-2 text-xs text-(--foreground) bg-black/[0.05] dark:bg-white/5 p-2 rounded">
+                                        {log.notes}
+                                    </p>
+                                )}
 
                                 {isExpanded && logRecordings.length > 0 && (
                                     <div className="mt-3 pt-3 border-t border-(--surface-border) space-y-2">

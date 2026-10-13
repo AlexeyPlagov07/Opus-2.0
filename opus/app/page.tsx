@@ -74,11 +74,11 @@ export default function App() {
     await refreshLogs(idToken);
   }
 
-  async function handleAddPracticeLog(songId: number, durationMinutes: number) {
+  async function handleAddPracticeLog(songId: number, durationMinutes: number, notes?: string | null) {
     if (!user) return;
 
     const idToken = await user.getIdToken();
-    await addLog(idToken, songId, durationMinutes);
+    await addLog(idToken, songId, durationMinutes, notes);
   }
 
   async function handleDeleteSong(songId: number) {
@@ -284,7 +284,7 @@ export default function App() {
             )}
           </section>
 
-          <aside className="w-full lg:w-96 lg:shrink-0 flex flex-col gap-6 lg:max-h-[calc(100vh-12rem)] lg:overflow-y-auto">
+          <aside className="w-full lg:w-96 lg:shrink-0 flex flex-col gap-6 lg:max-h-[calc(100vh-10rem)] lg:overflow-y-auto">
             <PracticeLogList 
               logs={logs}
               recordings={recordings}

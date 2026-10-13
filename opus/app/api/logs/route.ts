@@ -4,7 +4,7 @@ import { sql } from "@/lib/neon";
 
 export async function POST(req: Request) {
     try {
-        const { idToken, songId, durationMinutes } = await req.json();
+        const { idToken, songId, durationMinutes, notes } = await req.json();
 
         const duration = Number(durationMinutes);
 
@@ -38,8 +38,8 @@ export async function POST(req: Request) {
         }
 
         await sql`
-            insert into practice_logs (user_id, song_id, duration_minutes)
-            values (${userId}, ${songId}, ${durationMinutes})
+            insert into practice_logs (user_id, song_id, duration_minutes, notes)
+            values (${userId}, ${songId}, ${durationMinutes}, ${notes || null})
         `;
 
         return NextResponse.json({ ok: true });
@@ -64,20 +64,51 @@ export async function GET(req: Request) {
         const decoded = await getFirebaseAuth().verifyIdToken(idToken);
         const userId = decoded.uid;
 
-        const logs = await sql`
-            select
-                pl.id,
-                pl.user_id,
-                pl.song_id,
-                s.song_title,
-                s.artist,
-                pl.duration_minutes,
-                pl.created_at
-            from practice_logs pl
-            join songs s on s.id = pl.song_id
-            where pl.user_id = ${userId}
-            order by pl.created_at desc
-        `;
+        // Ensure notes column exists (idempotent)
+        try {
+            await sql`ALTER TABLE practice_logs ADD COLUMN IF NOT EXISTS notes TEXT`;
+        } catch (migrationError) {
+            // Column might already exist - continue anyway
+            console.debug("Schema migration note: notes column check complete");
+        }
+
+        // Try to select with notes column, fall back if it doesn't exist
+        let logs;
+        try {
+            logs = await sql`
+                select
+                    pl.id,
+                    pl.user_id,
+                    pl.song_id,
+                    s.song_title,
+                    s.artist,
+                    pl.duration_minutes,
+                    COALESCE(pl.notes, '') as notes,
+                    pl.created_at
+                from practice_logs pl
+                join songs s on s.id = pl.song_id
+                where pl.user_id = ${userId}
+                order by pl.created_at desc
+            `;
+        } catch (queryError) {
+            // If notes column doesn't exist yet, select without it
+            console.debug("Notes column not available yet, querying without it");
+            logs = await sql`
+                select
+                    pl.id,
+                    pl.user_id,
+                    pl.song_id,
+                    s.song_title,
+                    s.artist,
+                    pl.duration_minutes,
+                    '' as notes,
+                    pl.created_at
+                from practice_logs pl
+                join songs s on s.id = pl.song_id
+                where pl.user_id = ${userId}
+                order by pl.created_at desc
+            `;
+        }
 
         return NextResponse.json({ logs });
     } catch (error) {
